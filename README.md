@@ -27,6 +27,8 @@ Options:
   -h, --head <branch>     The head branch to compare for (default: HEAD)
   -c, --concurrency <n>   The number of concurrent tasks to run (default: 0 = number of CPUs)
   -u, --print-success     Show output for successful scripts as well
+  -a, --all-workspaces    Run scripts on all workspaces
+  -w, --workspace         Run scripts on specific workspaces (repeatable flag)
   -h, --help              Show the help text
 ```
 ## Examples

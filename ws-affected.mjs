@@ -37,6 +37,18 @@ const options = {
     description: 'Show output for successful scripts',
     default: false,
   },
+  'all-workspaces': {
+    type: 'boolean',
+    short: 'a',
+    description: 'Run scripts on all workspaces',
+    default: false,
+  },
+  'workspace': {
+    type: 'string',
+    short: 'w',
+    description: 'Run scripts on specific workspaces',
+    multiple: true,
+  },
   'help': {
     type: 'boolean',
     short: 'h',
@@ -55,6 +67,8 @@ Options:
   -h, --head <branch>     The head branch to compare from (default: HEAD)
   -c, --concurrency <n>   The number of concurrent tasks to run (default: 0 = number of CPUs)
   -u, --print-success     Show output for successful scripts as well
+  -a, --all-workspaces    Run scripts on all workspaces
+  -w, --workspace         Run scripts on specific workspaces (repeatable flag)
   -h, --help              Show the help text
 
 Examples:
@@ -69,6 +83,7 @@ let values;
 try {
   values = parseArgs({ options }).values;
 } catch (error) {
+  console.error(error.message);
   console.log(helpText);
   process.exit(0);
 }
@@ -164,66 +179,77 @@ workspaceInfoByName = Object.entries(workspaceInfoByName).reduce((acc, [name, { 
   return acc;
 }, {});
 
-// Find the point from where this current branch diverged from base branch (master)
-// Note: The head branch may not have been rebased to base branch. And so we need to
-// find the exact commit from which head branch diverged from.
-const baseBranchCommitHashes = execSync(`git rev-list --first-parent "${values.base}"`).toString().trim().split('\n');
-const headCommitHashes = execSync(`git rev-list --first-parent "\${2:-${values.head}}"`).toString().trim().split('\n');
-// Find the first differing commit hash between the two branches
-let commitHash = '';
-for (let i = 0; i < Math.min(baseBranchCommitHashes.length, headCommitHashes.length); i++) {
-  if (baseBranchCommitHashes[i] !== headCommitHashes[i]) {
-    commitHash = baseBranchCommitHashes[i];
-    break;
-  }
-}
-// console.log({commitHash})
-if (!commitHash) {
-  // console.log('No common commit hash found. Exiting...');
-  process.exit(0);
-}
+// --- Filtering workspaces ---
 
-// Run the git diff-tree command with the obtained commit hash
-const gitCommand = `git diff-tree --no-commit-id --name-only -r ${commitHash} ${values.head}`;
-const affectedFiles = execSync(gitCommand).toString().trim().split('\n');
-// Find affected workspaces
-const affectedWorkspaces = new Set();
-const workspaceConfigs = Object.values(workspaceInfoByName);
-affectedFiles.forEach(file => {
-  const workspace = workspaceConfigs.find(({ dir }) => file.startsWith(dir + path.sep));
-  if (workspace) {
-    affectedWorkspaces.add(workspace.name);
+let filteredWorkspaces;
+if (values['all-workspaces']) {
+  filteredWorkspaces = Object.keys(workspaceInfoByName);
+} else if (values.workspace) {
+  filteredWorkspaces = values.workspace;
+} else {
+  // Find the point from where this current branch diverged from base branch (master)
+  // Note: The head branch may not have been rebased to base branch. And so we need to
+  // find the exact commit from which head branch diverged from.
+  const baseBranchCommitHashes = execSync(`git rev-list --first-parent "${values.base}"`).toString().trim().split('\n');
+  const headCommitHashes = execSync(`git rev-list --first-parent "\${2:-${values.head}}"`).toString().trim().split('\n');
+  // Find the first differing commit hash between the two branches
+  let commitHash = '';
+  for (let i = 0; i < Math.min(baseBranchCommitHashes.length, headCommitHashes.length); i++) {
+    if (baseBranchCommitHashes[i] !== headCommitHashes[i]) {
+      commitHash = baseBranchCommitHashes[i];
+      break;
+    }
   }
-});
+  // console.log({commitHash})
+  if (!commitHash) {
+    // console.log('No common commit hash found. Exiting...');
+    process.exit(0);
+  }
 
-/**
- * Function to get all workspaces dependent on a workspace (including itself)
- * @param {string} workspaceName - The name of the workspace
- * @returns {Set<string>} - The set of dependent workspaces
- */
-function getDependentWorkspaces(workspaceName) {
-  const dependentWorkspaces = new Set([workspaceName]);
-  Object.entries(workspaceInfoByName).forEach(([name, { dependencies }]) => {
-    const allDependencies = Object.values(dependencies).flat();
-    if (allDependencies.includes(workspaceName)) {
-      dependentWorkspaces.add(name);
+  // Run the git diff-tree command with the obtained commit hash
+  const gitCommand = `git diff-tree --no-commit-id --name-only -r ${commitHash} ${values.head}`;
+  const affectedFiles = execSync(gitCommand).toString().trim().split('\n');
+  // Find affected workspaces
+  const affectedWorkspaces = new Set();
+  const workspaceConfigs = Object.values(workspaceInfoByName);
+  affectedFiles.forEach(file => {
+    const workspace = workspaceConfigs.find(({ dir }) => file.startsWith(dir + path.sep));
+    if (workspace) {
+      affectedWorkspaces.add(workspace.name);
     }
   });
-  return dependentWorkspaces;
+
+  /**
+   * Function to get all workspaces dependent on a workspace (including itself)
+   * @param {string} workspaceName - The name of the workspace
+   * @returns {Set<string>} - The set of dependent workspaces
+   */
+  function getDependentWorkspaces(workspaceName) {
+    const dependentWorkspaces = new Set([workspaceName]);
+    Object.entries(workspaceInfoByName).forEach(([name, { dependencies }]) => {
+      const allDependencies = Object.values(dependencies).flat();
+      if (allDependencies.includes(workspaceName)) {
+        dependentWorkspaces.add(name);
+      }
+    });
+    return dependentWorkspaces;
+  }
+
+  // Print affected workspaces and their dependent workspaces
+  const affectedSet = new Set();
+  affectedWorkspaces.forEach(workspaceName => {
+    const dependentWorkspaces = getDependentWorkspaces(workspaceName);
+    dependentWorkspaces.forEach((value) => {
+      affectedSet.add(value);
+    })
+  });
+  filteredWorkspaces = [...affectedSet];
 }
 
-// Print affected workspaces and their dependent workspaces
-const affectedSet = new Set();
-affectedWorkspaces.forEach(workspaceName => {
-  const dependentWorkspaces = getDependentWorkspaces(workspaceName);
-  dependentWorkspaces.forEach((value) => {
-    affectedSet.add(value);
-  })
-});
-const uniqueAffected = [...affectedSet];
+// --- Operations ---
 
 if (values.show) {
-  console.log(uniqueAffected.join('\n'));
+  console.log(filteredWorkspaces.join('\n'));
 } else if (values.run) {
   const spawnAsync = (command, options) => new Promise((resolve) => {
     const child = spawn(command, {
@@ -263,7 +289,7 @@ if (values.show) {
   const initialStartTime = Date.now();
   let commandCount = 0;
   const failedScripts = [];
-  for (const workspace of uniqueAffected) {
+  for (const workspace of filteredWorkspaces) {
     for (const script of scriptsToRun) {
       const promise = (async () => {
         const scriptName = script.split(' ')[0];
@@ -296,7 +322,7 @@ if (values.show) {
           }
           console.log(`\x1b[32m└─ \x1b[1m\x1b[32mSuccess\x1b[0m \x1B[2m(${elapsedTime}ms)\x1b[0m\n`);
         } else {
-          console.log(`\x1b[1m\x1b[32m✓\x1b[0m ${scriptName}:${workspace} \x1B[2m(${elapsedTime}ms)\x1b[0m`);
+          console.log(`\x1b[1m\x1b[32m✔\x1b[0m ${scriptName}:${workspace} \x1B[2m(${elapsedTime}ms)\x1b[0m`);
         }
       })();
       promises.push(promise);
