@@ -1,0 +1,25 @@
+{
+  "name": "ws-affected",
+  "version": "0.1.0",
+  "description": "Identify affected workspaces and run scripts on a npm workspaces (monorepo) based on branch changes.",
+  "main": "ws-affected.js",
+  "bin": {
+    "ws-affected": "./ws-affected.mjs"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Munawwar/ws-affected.git"
+  },
+  "keywords": [
+    "npm",
+    "workspaces",
+    "git"
+  ],
+  "author": "Munawwar Firoz",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Munawwar/ws-affected/issues"
+  },
+  "homepage": "https://github.com/Munawwar/ws-affected#readme"
+}
