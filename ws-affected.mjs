@@ -400,14 +400,16 @@ if (values.list || values['list-dependencies']) {
     concurrency = Math.max(1, os.cpus().length + concurrency);
   }
   const promises = [];
+  const promiseIdPosition = [];
+  let idGen = 1;
 
   // Run the commands in parallel
-  let activeCount = 0;
   const initialStartTime = Date.now();
   let commandCount = 0;
   const failedScripts = [];
   for (const workspace of filteredWorkspaces) {
     for (const script of scriptsToRun) {
+      const id = idGen++;
       const promise = (async () => {
         const scriptName = script.split(' ')[0];
         const command = workspaceInfoByName[workspace].scripts[scriptName] || '';
@@ -415,7 +417,7 @@ if (values.list || values['list-dependencies']) {
         let elapsedTime;
         let error;
 
-        if (!command) return;
+        if (!command) return id;
         commandCount++;
 
         const { code, output } = await spawnAsync(`npm run -w ${workspace} --if-present ${script}`, {
@@ -441,13 +443,16 @@ if (values.list || values['list-dependencies']) {
         } else {
           console.log(`\x1b[1m\x1b[32m✔\x1b[0m ${scriptName}:${workspace} \x1B[2m(${elapsedTime}ms)\x1b[0m`);
         }
+        return id;
       })();
       promises.push(promise);
-      activeCount++;
+      promiseIdPosition.push(id);
 
-      if (activeCount >= concurrency) {
-        await Promise.race(promises);
-        activeCount--;
+      if (promises.length >= concurrency) {
+        const id = await Promise.race(promises);
+        const index = promiseIdPosition.indexOf(id);
+        promises.splice(index, 1);
+        promiseIdPosition.splice(index, 1);
       }
     }
   }
