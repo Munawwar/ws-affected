@@ -249,7 +249,9 @@ if (values['all-workspaces']) {
 // --- Operations ---
 
 if (values.show) {
-  console.log(filteredWorkspaces.join('\n'));
+  if (filteredWorkspaces.length) {
+    console.log(filteredWorkspaces.join('\n'));
+  }
 } else if (values.run) {
   const spawnAsync = (command, options) => new Promise((resolve) => {
     const child = spawn(command, {
