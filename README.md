@@ -21,21 +21,61 @@ npx ws-affected [options]
 Usage: npx ws-affected [options]
 
 Options:
-  -s, --show              Show the affected workspaces
   -r, --run <script>      Run the specified commands on affected workspaces (repeatable flag)
+  -l, --list              List recursively the dependents (inclusive) of affected workspaces or workspaces selected by --workspace flag.
   -b, --base <branch>     The base branch to compare against (default: master)
   -h, --head <branch>     The head branch to compare for (default: HEAD)
   -c, --concurrency <n>   The number of concurrent tasks to run (default: 0 = number of CPUs)
-  -u, --print-success     Show output for successful scripts as well
-  -a, --all-workspaces    Run scripts on all workspaces
-  -w, --workspace         Run scripts on specific workspaces (repeatable flag)
+  -u, --print-success     Print output for successful scripts as well
+  -a, --all-workspaces    --run scripts on all workspaces
+  -w, --workspace         --run scripts or --list dependencies of specific workspaces (repeatable flag)
+  --list-dependencies     List recursively the dependencies (inclusive) of workspaces selected by --workspace flag.
+  --dep-types         What dependencies to look at. Options: 'all' (default) or 'prod' or 'all' (default). 'prod' means "dependencies" and "peerDependencies" in package.json -d
   -h, --help              Show the help text
+
+Examples:
+  ws-affected --list
+  ws-affected --run lint --run test --concurrency 4
+  ws-affected --base main --run build
+  ws-affected --run lint --run test --print-success
+
+Workspace vs package
+
+  They are synonyms as far as this tool is concerned.
+
+Dependents vs Dependencies
+
+  Dependents are the packages the depend on a given package. Dependencies are packages that a given package depends on.
+
+  Let's say A depends on B, which depends on C, which depends on D, which depends on E. The tree looks like the following:
+
+  A
+  - B
+    - C
+      - D
+        - E
+
+  Focus on C for a moment (you can use --workspace C flag), and the following are definitions for some terms:
+
+  - "Dependents" of C are A and B
+  - "Dependents inclusive" of C are A, B and C
+  - "Dependencies" of C are D and E.
+  - "Dependencies inclusive" of C are C, D and E.
+
+  "Affected workspaces" means the workspaces that was directly edited by changes on `--head` branch and the
+  dependents of those workspaces.
+
+A note about --workspace flag
+
+  When --list or --list-dependencies is used, dependents/dependencies of \`--workspace\`s are included.
+  When --run is used, only those \`--workspace\`s are used without including dependents/dependencies.
+
 ```
 ## Examples
 
-### Show affected workspaces
+### List affected workspaces
 ```
-npx ws-affected --show
+npx ws-affected --list
 
 workspace1
 workspace3

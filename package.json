@@ -1,6 +1,6 @@
 {
   "name": "ws-affected",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "Identify affected workspaces and run scripts on a npm workspaces (monorepo) based on branch changes.",
   "main": "ws-affected.js",
   "bin": {

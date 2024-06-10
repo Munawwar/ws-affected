@@ -7,14 +7,24 @@ import { execSync, spawn } from 'node:child_process';
 import { parseArgs, promisify } from 'node:util';
 
 const options = {
-  'show': {
-    type: 'boolean',
-    short: 's',
-  },
   'run': {
     type: 'string',
     short: 'r',
     multiple: true,
+  },
+  'list': {
+    type: 'boolean',
+    short: 'l',
+  },
+  // This is an awkward flag that doesn't really belong in a tool named "affected"
+  // however I'd rather have this hack over implementing another tool for this
+  'list-dependencies': {
+    type: 'boolean',
+  },
+  // This is yet another hack to be used with --list-dependencies to list prod dependencies
+  'dep-types': {
+    type: 'string',
+    default: 'all',
   },
   'base': {
     type: 'string',
@@ -29,7 +39,7 @@ const options = {
   'concurrency': {
     type: 'string',
     short: 'c',
-    default: '0'
+    default: '0',
   },
   'print-success': {
     type: 'boolean',
@@ -61,21 +71,54 @@ const helpText = `
 Usage: npx ws-affected [options]
 
 Options:
-  -s, --show              Show the affected workspaces
   -r, --run <script>      Run the specified commands on affected workspaces (repeatable flag)
+  -l, --list              List recursively the dependents (inclusive) of affected workspaces or workspaces selected by --workspace flag.
   -b, --base <branch>     The base branch to compare against (default: master)
-  -h, --head <branch>     The head branch to compare from (default: HEAD)
+  -h, --head <branch>     The head branch to compare for (default: HEAD)
   -c, --concurrency <n>   The number of concurrent tasks to run (default: 0 = number of CPUs)
-  -u, --print-success     Show output for successful scripts as well
-  -a, --all-workspaces    Run scripts on all workspaces
-  -w, --workspace         Run scripts on specific workspaces (repeatable flag)
+  -u, --print-success     Print output for successful scripts as well
+  -a, --all-workspaces    --run scripts on all workspaces
+  -w, --workspace         --run scripts or --list dependencies of specific workspaces (repeatable flag)
+  --list-dependencies     List recursively the dependencies (inclusive) of workspaces selected by --workspace flag.
+  --dep-types         What dependencies to look at. Options: 'all' (default) or 'prod' or 'all' (default). 'prod' means "dependencies" and "peerDependencies" in package.json -d
   -h, --help              Show the help text
 
 Examples:
-  ws-affected --show
+  ws-affected --list
   ws-affected --run lint --run test --concurrency 4
   ws-affected --base main --run build
   ws-affected --run lint --run test --print-success
+
+Workspace vs package
+
+  They are synonyms as far as this tool is concerned.
+
+Dependents vs Dependencies
+
+  Dependents are the packages the depend on a given package. Dependencies are packages that a given package depends on.
+
+  Let's say A depends on B, which depends on C, which depends on D, which depends on E. The tree looks like the following:
+
+  A
+  - B
+    - C
+      - D
+        - E
+
+  Focus on C for a moment (you can use --workspace C flag), and the following are definitions for some terms:
+
+  - "Dependents" of C are A and B
+  - "Dependents inclusive" of C are A, B and C
+  - "Dependencies" of C are D and E.
+  - "Dependencies inclusive" of C are C, D and E.
+
+  "Affected workspaces" means the workspaces that was directly edited by changes on \`--head\` branch and the
+  dependents of those workspaces.
+
+A note about --workspace flag
+
+  When --list or --list-dependencies is used, dependents/dependencies of \`--workspace\`s are included.
+  When --run is used, only those \`--workspace\`s are used without including dependents/dependencies.
 `;
 
 let values;
@@ -85,7 +128,7 @@ try {
 } catch (error) {
   console.error(error.message);
   console.log(helpText);
-  process.exit(0);
+  process.exit(1);
 }
 
 if (values.help) {
@@ -93,14 +136,34 @@ if (values.help) {
   process.exit(0);
 }
 
-if (values.show === undefined && !values.run?.length) {
-  console.log('Please specify at least one script to run with --run flag or use the --show option to see affected workspaces.');
+// Read the root package.json file
+let rootPackageJson;
+try {
+  rootPackageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+} catch (e) {
+  console.error('\x1b[31mFailed to read package.json file. Either it is missing or the file is not a valid JSON file.\x1b[0m');
+  process.exit(1);
+}
+
+if (!rootPackageJson.workspaces) {
+  console.error('\x1b[31mThis project does not have a "workspaces" field in package.json\x1b[0m');
+  process.exit(1);
+}
+
+if (
+  values.list === undefined
+  && values['list-dependencies'] === undefined
+  && !values.run?.length
+) {
+  console.error('\x1b[31mPlease specify --run or --list or --list-dependencies flag.\x1b[0m'); console
   console.log(helpText);
   process.exit(1);
 }
 
-// Read the root package.json file
-const rootPackageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+if (values['list-dependencies'] && !values.workspace) {
+  console.error('\x1b[31m--list-dependencies option also need --workspace flag specified.\x1b[0m');
+  process.exit(1);
+}
 
 // Get the workspaces directory from the root package.json
 const workspacesDir = rootPackageJson.workspaces.map(dir => dir.replace('/*', ''));
@@ -179,6 +242,57 @@ workspaceInfoByName = Object.entries(workspaceInfoByName).reduce((acc, [name, { 
   return acc;
 }, {});
 
+/**
+ * Function to get all workspaces dependent on a workspace
+ * @param {string} workspaceName - The name of the workspace
+ * @param {object} [options]
+ * @param {'all' | 'prod'} [options.depTypes='all'] 'prod' dependencies is "dependencies" and "peerDependencies" in package.json
+ * @param {boolean} [options.inclusive=false] If true, includes `workspaceName` in the list of dependents
+ * @returns {Set<string>} - The set of dependent workspaces
+ */
+function findDependents(workspaceName, { depTypes = 'all', inclusive = false } = {}) {
+  const deps = new Set([]);
+  if (workspaceInfoByName[workspaceName] && inclusive) {
+    deps.add(workspaceName);
+  }
+  Object.entries(workspaceInfoByName).forEach(([name, { dependencies }]) => {
+    let selectedDependencies;
+    if (depTypes === 'all') {
+      selectedDependencies =  Object.values(dependencies).flat();
+    } else if (depTypes === 'prod') {
+      selectedDependencies = dependencies.dependencies.concat(dependencies.peerDependencies);
+    }
+    if (selectedDependencies.includes(workspaceName)) {
+      deps.add(name);
+    }
+  });
+  return deps;
+}
+
+/**
+ * Function to get recursive dependencies of a workspace
+ * @param {string} workspaceName - The name of the workspace
+ * @param {object} [options]
+ * @param {'all' | 'prod'} [options.depTypes='all'] 'prod' dependencies is "dependencies" and "peerDependencies" in package.json
+ * @param {boolean} [options.inclusive=false] If true, includes `workspaceName` in the list of dependencies
+ * @returns {Set<string>} - The set of dependent workspaces
+ */
+function findDependencies(workspaceName, { depTypes = 'all', inclusive = false } = {}) {
+  const deps = new Set([]);
+  if (workspaceInfoByName[workspaceName] && inclusive) {
+    deps.add(workspaceName);
+  }
+  const { dependencies } = workspaceInfoByName[workspaceName];
+  let selectedDependencies;
+  if (depTypes === 'all') {
+    selectedDependencies =  Object.values(dependencies).flat();
+  } else if (depTypes === 'prod') {
+    selectedDependencies = dependencies.dependencies.concat(dependencies.peerDependencies);
+  }
+  selectedDependencies.forEach((name) => deps.add(name));
+  return deps;
+}
+
 // --- Filtering workspaces ---
 
 let filteredWorkspaces;
@@ -202,7 +316,7 @@ if (values['all-workspaces']) {
   }
   // console.log({commitHash})
   if (!commitHash) {
-    // console.log('No common commit hash found. Exiting...');
+    console.warn('\x1b[33mNo common commit hash found. Exiting...\x1b[0m');
     process.exit(0);
   }
 
@@ -219,36 +333,37 @@ if (values['all-workspaces']) {
     }
   });
 
-  /**
-   * Function to get all workspaces dependent on a workspace (including itself)
-   * @param {string} workspaceName - The name of the workspace
-   * @returns {Set<string>} - The set of dependent workspaces
-   */
-  function getDependentWorkspaces(workspaceName) {
-    const dependentWorkspaces = new Set([workspaceName]);
-    Object.entries(workspaceInfoByName).forEach(([name, { dependencies }]) => {
-      const allDependencies = Object.values(dependencies).flat();
-      if (allDependencies.includes(workspaceName)) {
-        dependentWorkspaces.add(name);
-      }
-    });
-    return dependentWorkspaces;
-  }
-
-  // Print affected workspaces and their dependent workspaces
+  // Find affected workspaces and their dependent workspaces
   const affectedSet = new Set();
   affectedWorkspaces.forEach(workspaceName => {
-    const dependentWorkspaces = getDependentWorkspaces(workspaceName);
-    dependentWorkspaces.forEach((value) => {
-      affectedSet.add(value);
-    })
+    findDependents(workspaceName, { depTypes: 'all', inclusive: true }).forEach(
+      (value) => affectedSet.add(value)
+    );
   });
   filteredWorkspaces = [...affectedSet];
 }
 
 // --- Operations ---
 
-if (values.show) {
+if (values.list || values['list-dependencies']) {
+  // Remember a difference in behavior exists between --list, --list-dependencies and --run for --workspace.
+  // When --list or --list-dependencies is used, dependents/dependencies of `--workspace`s are included.
+  // When --run is used, only those `--workspace`s are run without including dependents/dependencies 
+  if (values.workspace) {
+    const deps = new Set([]);
+    values.workspace.forEach((workspaceName) => {
+      if (values.list) {
+        findDependents(workspaceName, { depTypes: values['dep-types'], inclusive: true }).forEach(
+          (name) => deps.add(name)
+        );
+      } else if (values['list-dependencies']) {
+        findDependencies(workspaceName, { depTypes: values['dep-types'], inclusive: true }).forEach(
+          (name) => deps.add(name)
+        );
+      }
+    });
+    filteredWorkspaces = [...deps];
+  }
   if (filteredWorkspaces.length) {
     console.log(filteredWorkspaces.join('\n'));
   }
