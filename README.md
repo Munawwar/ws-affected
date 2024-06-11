@@ -5,13 +5,23 @@
 ## Features
 
 - Run scripts on workspaces and their dependents affected by changes on a branch
-- Print workspaces affected by changes on a branch (useful for CI/CD scripts)
+  
+    This is useful on local development to run tests and lint only on workspaces that have changed
+
+- List workspaces affected by changes on a branch
+
+    This is useful for CI/CD scripts to determine affected workspaces to deploy
+
+- List a single workspace's prod dependencies
+  
+    This is useful for CI/CD scripts for packaging only the prod dependencies of a single workspace / service
+
 
 ## Installation
 
 You can run `ws-affected` directly using `npx`:
 
-```bash
+```sh
 npx ws-affected [options]
 ```
 
@@ -73,18 +83,22 @@ A note about --workspace flag
 ```
 ## Examples
 
-### List affected workspaces
-```
+### List workspaces affected by changes on current branch
+```sh
 npx ws-affected --list
-
+# or npx ws-affected --list --base master --head HEAD
+# or npx ws-affected --list --base origin/master --head origin/HEAD
+```
+```
 workspace1
 workspace3
 ```
 
 ### Run scripts on affected workspaces
-```
+```sh
 npx ws-affected --run lint --run test
-
+```
+```
 ✓ lint:service1 (748ms)
 ✓ lint:service3 (1289ms)
 ✓ test:shared-lib (2816ms)
@@ -93,9 +107,10 @@ npx ws-affected --run lint --run test
 ```
 
 ### Same command but show output for all scripts including successful ones
-```
+```sh
 npx ws-affected --run lint --print-success
-
+```
+```
 ✓ lint:service1 $ npm run -w service1 --if-present lint
 │ > service1@0.1.0 lint
 │ > ./scripts/lint.sh
@@ -109,6 +124,17 @@ npx ws-affected --run lint --print-success
 ⏱️  Took 2.03s (2 tasks)
 ```
 
+### List a single workspace's prod dependencies
+
+```sh
+npx ws-affected --workspace service1 --list-dependencies --dep-types prod
+```
+```
+service1
+shared-lib
+```
+
+
 ### How it works
 
 How it works:
@@ -117,7 +143,7 @@ How it works:
 - It finds the point where the current branch diverged from the base branch (default: master).
 - It runs git diff-tree to identify the files that have changed between the divergence point and the current branch.
 - It determines the affected workspaces based on the changed files and their dependent workspaces.
-- If the --show flag is used, it prints the affected workspaces.
+- If the --list flag is used, it prints the affected workspaces.
 - If the --run flag is used, it runs the specified scripts on the affected workspaces, respecting the concurrency limit.
 
 ## License
