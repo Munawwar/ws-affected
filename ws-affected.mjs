@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 
+import { execSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execSync, spawn } from 'node:child_process';
 import { parseArgs, promisify } from 'node:util';
 
 const options = {
-  'run': {
+  run: {
     type: 'string',
     short: 'r',
     multiple: true,
   },
-  'list': {
+  list: {
     type: 'boolean',
     short: 'l',
   },
@@ -26,17 +26,17 @@ const options = {
     type: 'string',
     default: 'all',
   },
-  'base': {
+  base: {
     type: 'string',
     short: 'b',
     default: 'master',
   },
-  'head': {
+  head: {
     type: 'string',
     short: 'h',
     default: 'HEAD',
   },
-  'concurrency': {
+  concurrency: {
     type: 'string',
     short: 'c',
     default: '0',
@@ -53,13 +53,13 @@ const options = {
     description: 'Run scripts on all workspaces',
     default: false,
   },
-  'workspace': {
+  workspace: {
     type: 'string',
     short: 'w',
     description: 'Run scripts on specific workspaces',
     multiple: true,
   },
-  'help': {
+  help: {
     type: 'boolean',
     short: 'h',
     description: 'Show the help text',
@@ -72,15 +72,15 @@ Usage: npx ws-affected [options]
 
 Options:
   -r, --run <script>      Run the specified commands on affected workspaces (repeatable flag)
-  -l, --list              List recursively the dependents (inclusive) of affected workspaces or workspaces selected by --workspace flag.
+  -l, --list              List recursively the dependents (inclusive) of affected workspaces or workspaces selected by --workspace flag
   -b, --base <branch>     The base branch to compare against (default: master)
   -h, --head <branch>     The head branch to compare for (default: HEAD)
   -c, --concurrency <n>   The number of concurrent tasks to run (default: 0 = number of CPUs)
   -u, --print-success     Print output for successful scripts as well
   -a, --all-workspaces    --run scripts on all workspaces
   -w, --workspace         --run scripts or --list dependencies of specific workspaces (repeatable flag)
-  --list-dependencies     List recursively the dependencies (inclusive) of workspaces selected by --workspace flag.
-  --dep-types         What dependencies to look at. Options: 'all' (default) or 'prod' or 'all' (default). 'prod' means "dependencies" and "peerDependencies" in package.json -d
+  --list-dependencies     List recursively the dependencies (inclusive) of workspaces selected by --workspace flag
+  --dep-types             What dependencies to look at. Options: 'all' (default) or 'prod'. 'prod' means "dependencies" and "peerDependencies" in package.json
   -h, --help              Show the help text
 
 Examples:
@@ -141,7 +141,9 @@ let rootPackageJson;
 try {
   rootPackageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 } catch (e) {
-  console.error('\x1b[31mFailed to read package.json file. Either it is missing or the file is not a valid JSON file.\x1b[0m');
+  console.error(
+    '\x1b[31mFailed to read package.json file. Either it is missing or the file is not a valid JSON file.\x1b[0m',
+  );
   process.exit(1);
 }
 
@@ -150,12 +152,8 @@ if (!rootPackageJson.workspaces) {
   process.exit(1);
 }
 
-if (
-  values.list === undefined
-  && values['list-dependencies'] === undefined
-  && !values.run?.length
-) {
-  console.error('\x1b[31mPlease specify --run or --list or --list-dependencies flag.\x1b[0m'); console
+if (values.list === undefined && values['list-dependencies'] === undefined && !values.run?.length) {
+  console.error('\x1b[31mPlease specify --run or --list or --list-dependencies flag.\x1b[0m');
   console.log(helpText);
   process.exit(1);
 }
@@ -166,7 +164,7 @@ if (values['list-dependencies'] && !values.workspace) {
 }
 
 // Get the workspaces directory from the root package.json
-const workspacesDir = rootPackageJson.workspaces.map(dir => dir.replace('/*', ''));
+const workspacesDir = rootPackageJson.workspaces.map((dir) => dir.replace('/*', ''));
 
 // Function to read package.json of a workspace
 function readPackageJson(workspaceDir) {
@@ -189,7 +187,7 @@ const depTypes = ['dependencies', 'devDependencies', 'peerDependencies', 'option
  */
 function getWorkspaceDependencies(workspacePackageJson) {
   const dependencies = {};
-  depTypes.forEach(depType => {
+  depTypes.forEach((depType) => {
     if (workspacePackageJson[depType]) {
       dependencies[depType] = Object.keys(workspacePackageJson[depType]);
     } else {
@@ -211,8 +209,8 @@ function getWorkspaceDependencies(workspacePackageJson) {
  * }}
  */
 let workspaceInfoByName = {};
-workspacesDir.forEach(wsDir => {
-  fs.readdirSync(wsDir).forEach(subDirName => {
+workspacesDir.forEach((wsDir) => {
+  fs.readdirSync(wsDir).forEach((subDirName) => {
     const subDirPath = path.join(wsDir, subDirName);
     if (!fs.statSync(subDirPath).isDirectory()) return;
     // console.log({subDirPath})
@@ -225,22 +223,25 @@ workspacesDir.forEach(wsDir => {
       name: workspaceName,
       dir: subDirPath,
       scripts: workspacePackageJson.scripts,
-      dependencies
+      dependencies,
     };
   });
 });
 
 // Filter out other npm package names from dependencies
-workspaceInfoByName = Object.entries(workspaceInfoByName).reduce((acc, [name, { dependencies, ...rest }]) => {
-  acc[name] = {
-    dependencies: Object.entries(dependencies).reduce((acc2, [depType, depNames]) => {
-      acc2[depType] = depNames.filter(name => Boolean(workspaceInfoByName[name]));
-      return acc2;
-    }, {}),
-    ...rest
-  };
-  return acc;
-}, {});
+workspaceInfoByName = Object.entries(workspaceInfoByName).reduce(
+  (acc, [name, { dependencies, ...rest }]) => {
+    acc[name] = {
+      dependencies: Object.entries(dependencies).reduce((acc2, [depType, depNames]) => {
+        acc2[depType] = depNames.filter((name) => Boolean(workspaceInfoByName[name]));
+        return acc2;
+      }, {}),
+      ...rest,
+    };
+    return acc;
+  },
+  {},
+);
 
 /**
  * Function to get all workspaces dependent on a workspace
@@ -258,7 +259,7 @@ function findDependents(workspaceName, { depTypes = 'all', inclusive = false } =
   Object.entries(workspaceInfoByName).forEach(([name, { dependencies }]) => {
     let selectedDependencies;
     if (depTypes === 'all') {
-      selectedDependencies =  Object.values(dependencies).flat();
+      selectedDependencies = Object.values(dependencies).flat();
     } else if (depTypes === 'prod') {
       selectedDependencies = dependencies.dependencies.concat(dependencies.peerDependencies);
     }
@@ -285,7 +286,7 @@ function findDependencies(workspaceName, { depTypes = 'all', inclusive = false }
   const { dependencies } = workspaceInfoByName[workspaceName];
   let selectedDependencies;
   if (depTypes === 'all') {
-    selectedDependencies =  Object.values(dependencies).flat();
+    selectedDependencies = Object.values(dependencies).flat();
   } else if (depTypes === 'prod') {
     selectedDependencies = dependencies.dependencies.concat(dependencies.peerDependencies);
   }
@@ -304,8 +305,14 @@ if (values['all-workspaces']) {
   // Find the point from where this current branch diverged from base branch (master)
   // Note: The head branch may not have been rebased to base branch. And so we need to
   // find the exact commit from which head branch diverged from.
-  const baseBranchCommitHashes = execSync(`git rev-list --first-parent "${values.base}"`).toString().trim().split('\n');
-  const headCommitHashes = execSync(`git rev-list --first-parent "\${2:-${values.head}}"`).toString().trim().split('\n');
+  const baseBranchCommitHashes = execSync(`git rev-list --first-parent "${values.base}"`)
+    .toString()
+    .trim()
+    .split('\n');
+  const headCommitHashes = execSync(`git rev-list --first-parent "\${2:-${values.head}}"`)
+    .toString()
+    .trim()
+    .split('\n');
   // Find the first differing commit hash between the two branches
   let commitHash = '';
   for (let i = 0; i < Math.min(baseBranchCommitHashes.length, headCommitHashes.length); i++) {
@@ -326,7 +333,7 @@ if (values['all-workspaces']) {
   // Find affected workspaces
   const affectedWorkspaces = new Set();
   const workspaceConfigs = Object.values(workspaceInfoByName);
-  affectedFiles.forEach(file => {
+  affectedFiles.forEach((file) => {
     const workspace = workspaceConfigs.find(({ dir }) => file.startsWith(dir + path.sep));
     if (workspace) {
       affectedWorkspaces.add(workspace.name);
@@ -335,9 +342,9 @@ if (values['all-workspaces']) {
 
   // Find affected workspaces and their dependent workspaces
   const affectedSet = new Set();
-  affectedWorkspaces.forEach(workspaceName => {
-    findDependents(workspaceName, { depTypes: 'all', inclusive: true }).forEach(
-      (value) => affectedSet.add(value)
+  affectedWorkspaces.forEach((workspaceName) => {
+    findDependents(workspaceName, { depTypes: 'all', inclusive: true }).forEach((value) =>
+      affectedSet.add(value),
     );
   });
   filteredWorkspaces = [...affectedSet];
@@ -348,18 +355,20 @@ if (values['all-workspaces']) {
 if (values.list || values['list-dependencies']) {
   // Remember a difference in behavior exists between --list, --list-dependencies and --run for --workspace.
   // When --list or --list-dependencies is used, dependents/dependencies of `--workspace`s are included.
-  // When --run is used, only those `--workspace`s are run without including dependents/dependencies 
+  // When --run is used, only those `--workspace`s are run without including dependents/dependencies
   if (values.workspace) {
     const deps = new Set([]);
     values.workspace.forEach((workspaceName) => {
       if (values.list) {
-        findDependents(workspaceName, { depTypes: values['dep-types'], inclusive: true }).forEach(
-          (name) => deps.add(name)
-        );
+        findDependents(workspaceName, {
+          depTypes: values['dep-types'],
+          inclusive: true,
+        }).forEach((name) => deps.add(name));
       } else if (values['list-dependencies']) {
-        findDependencies(workspaceName, { depTypes: values['dep-types'], inclusive: true }).forEach(
-          (name) => deps.add(name)
-        );
+        findDependencies(workspaceName, {
+          depTypes: values['dep-types'],
+          inclusive: true,
+        }).forEach((name) => deps.add(name));
       }
     });
     filteredWorkspaces = [...deps];
@@ -368,32 +377,33 @@ if (values.list || values['list-dependencies']) {
     console.log(filteredWorkspaces.join('\n'));
   }
 } else if (values.run) {
-  const spawnAsync = (command, options) => new Promise((resolve) => {
-    const child = spawn(command, {
-      ...options,
-      shell: true,
-      env: {
-        ...process.env,
-        'FORCE_COLOR': '1',
-      }
+  const spawnAsync = (command, options) =>
+    new Promise((resolve) => {
+      const child = spawn(command, {
+        ...options,
+        shell: true,
+        env: {
+          ...process.env,
+          FORCE_COLOR: '1',
+        },
+      });
+      // Create a buffer to store the combined output
+      let outputBuffer = '';
+      // Stream stdout and stderr to the combined output buffer
+      child.stdout.on('data', (data) => {
+        outputBuffer += data.toString();
+      });
+      child.stderr.on('data', (data) => {
+        outputBuffer += data.toString();
+      });
+      // Handle the command completion
+      child.on('close', (code) => {
+        resolve({ code, output: outputBuffer.trim() });
+      });
     });
-    // Create a buffer to store the combined output
-    let outputBuffer = '';
-    // Stream stdout and stderr to the combined output buffer
-    child.stdout.on('data', (data) => {
-      outputBuffer += data.toString();
-    });
-    child.stderr.on('data', (data) => {
-      outputBuffer += data.toString();
-    });
-    // Handle the command completion
-    child.on('close', (code) => {
-      resolve({ code, output: outputBuffer.trim() });
-    });
-  });
 
   const scriptsToRun = values.run;
-  let concurrency = parseInt(values.concurrency, 10) || 0;
+  let concurrency = Number.parseInt(values.concurrency, 10) || 0;
   if (concurrency === 0) {
     concurrency = os.cpus().length;
   } else if (concurrency < 0) {
@@ -420,28 +430,51 @@ if (values.list || values['list-dependencies']) {
         if (!command) return id;
         commandCount++;
 
-        const { code, output } = await spawnAsync(`npm run -w ${workspace} --if-present ${script}`, {
-          encoding: 'utf8',
-          cwd: workspaceInfoByName[workspace].dir,
-        });
+        const { code, output } = await spawnAsync(
+          `npm run -w ${workspace} --if-present ${script}`,
+          {
+            encoding: 'utf8',
+            cwd: workspaceInfoByName[workspace].dir,
+          },
+        );
         elapsedTime = Date.now() - startTime;
 
         if (code !== 0) {
           process.exitCode = 1;
-          console.log(`\x1b[1m\x1b[31m✖ ${scriptName}:${workspace} \x1b[33m$\x1b[0m npm run -w ${workspace} --if-present ${script}`);
+          console.log(
+            `\x1b[1m\x1b[31m✖ ${scriptName}:${workspace} \x1b[33m$\x1b[0m npm run -w ${workspace} --if-present ${script}`,
+          );
           if (output.length > 0) {
-            console.log(`${output.split('\n').map(line => `\x1b[31m│\x1b[0m ${line}`).join('\n')}`);
+            console.log(
+              `${output
+                .split('\n')
+                .map((line) => `\x1b[31m│\x1b[0m ${line}`)
+                .join('\n')}`,
+            );
           }
-          console.log(`\x1b[31m└─ \x1b[1m\x1b[31mFailed\x1b[0m \x1B[2m(${elapsedTime}ms)\x1b[0m${values['print-success'] ? '\n' : ''}`);
+          console.log(
+            `\x1b[31m└─ \x1b[1m\x1b[31mFailed\x1b[0m \x1B[2m(${elapsedTime}ms)\x1b[0m${values['print-success'] ? '\n' : ''}`,
+          );
           failedScripts.push(`\x1b[1m\x1b[31m✖ ${scriptName}:${workspace} failed\x1b[0m`);
         } else if (values['print-success']) {
-          console.log(`\x1b[1m\x1b[32m✓\x1b[0m ${scriptName}:${workspace} \x1b[33m$\x1b[0m npm run -w ${workspace} --if-present ${script}`);
+          console.log(
+            `\x1b[1m\x1b[32m✓\x1b[0m ${scriptName}:${workspace} \x1b[33m$\x1b[0m npm run -w ${workspace} --if-present ${script}`,
+          );
           if (output.length > 0) {
-            console.log(`${output.split('\n').map(line => `\x1b[32m│\x1b[0m ${line}`).join('\n')}`);
+            console.log(
+              `${output
+                .split('\n')
+                .map((line) => `\x1b[32m│\x1b[0m ${line}`)
+                .join('\n')}`,
+            );
           }
-          console.log(`\x1b[32m└─ \x1b[1m\x1b[32mSuccess\x1b[0m \x1B[2m(${elapsedTime}ms)\x1b[0m\n`);
+          console.log(
+            `\x1b[32m└─ \x1b[1m\x1b[32mSuccess\x1b[0m \x1B[2m(${elapsedTime}ms)\x1b[0m\n`,
+          );
         } else {
-          console.log(`\x1b[1m\x1b[32m✔\x1b[0m ${scriptName}:${workspace} \x1B[2m(${elapsedTime}ms)\x1b[0m`);
+          console.log(
+            `\x1b[1m\x1b[32m✔\x1b[0m ${scriptName}:${workspace} \x1B[2m(${elapsedTime}ms)\x1b[0m`,
+          );
         }
         return id;
       })();
@@ -460,7 +493,7 @@ if (values.list || values['list-dependencies']) {
 
   // Show total time taken
   const totalTimeTaken = Date.now() - initialStartTime;
-  let message = "\n⏱️  Took ";
+  let message = '\n⏱️  Took ';
 
   if (totalTimeTaken < 60000) {
     const elapsedSeconds = totalTimeTaken / 1000;
@@ -479,6 +512,6 @@ if (values.list || values['list-dependencies']) {
   console.log(message, '\x1b[32m');
 
   if (failedScripts.length > 0) {
-    console.log('\n' + failedScripts.join('\n'));
+    console.log(`\n${failedScripts.join('\n')}`);
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "ws-affected",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Identify affected workspaces and run scripts on a npm workspaces (monorepo) based on branch changes.",
   "main": "ws-affected.js",
   "bin": {
@@ -21,5 +21,12 @@
   "bugs": {
     "url": "https://github.com/Munawwar/ws-affected/issues"
   },
-  "homepage": "https://github.com/Munawwar/ws-affected#readme"
+  "homepage": "https://github.com/Munawwar/ws-affected#readme",
+  "devDependencies": {
+    "@biomejs/biome": "1.8.1"
+  },
+  "scripts": {
+    "lint": "npx @biomejs/biome check ws-affected.mjs",
+    "lint-fix": "npx @biomejs/biome check --fix ws-affected.mjs"
+  }
 }
