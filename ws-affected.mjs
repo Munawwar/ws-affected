@@ -6,6 +6,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { parseArgs, promisify } from 'node:util';
 
+const RED = '\x1b[31m';
+const GREEN = '\x1b[32m';
+const YELLOW = '\x1b[33m';
+const BOLD = '\x1b[1m';
+const DIM = '\x1b[2m';
+const RESET = '\x1b[0m';
+
 const options = {
   run: {
     type: 'string',
@@ -142,24 +149,24 @@ try {
   rootPackageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 } catch (e) {
   console.error(
-    '\x1b[31mFailed to read package.json file. Either it is missing or the file is not a valid JSON file.\x1b[0m',
+    `${RED}Failed to read package.json file. Either it is missing or the file is not a valid JSON file.${RESET}`,
   );
   process.exit(1);
 }
 
 if (!rootPackageJson.workspaces) {
-  console.error('\x1b[31mThis project does not have a "workspaces" field in package.json\x1b[0m');
+  console.error(`${RED}This project does not have a "workspaces" field in package.json${RESET}`);
   process.exit(1);
 }
 
 if (values.list === undefined && values['list-dependencies'] === undefined && !values.run?.length) {
-  console.error('\x1b[31mPlease specify --run or --list or --list-dependencies flag.\x1b[0m');
+  console.error(`${RED}Please specify --run or --list or --list-dependencies flag.${RESET}`);
   console.log(helpText);
   process.exit(1);
 }
 
 if (values['list-dependencies'] && !values.workspace) {
-  console.error('\x1b[31m--list-dependencies option also need --workspace flag specified.\x1b[0m');
+  console.error(`${RED}--list-dependencies option also need --workspace flag specified.${RESET}`);
   process.exit(1);
 }
 
@@ -323,7 +330,7 @@ if (values['all-workspaces']) {
   }
   // console.log({commitHash})
   if (!commitHash) {
-    console.warn('\x1b[33mNo common commit hash found. Exiting...\x1b[0m');
+    console.warn(`${YELLOW}No common commit hash found. Exiting...${RESET}`);
     process.exit(0);
   }
 
@@ -442,38 +449,38 @@ if (values.list || values['list-dependencies']) {
         if (code !== 0) {
           process.exitCode = 1;
           console.log(
-            `\x1b[1m\x1b[31m✖ ${scriptName}:${workspace} \x1b[33m$\x1b[0m npm run -w ${workspace} --if-present ${script}`,
+            `${BOLD}${RED}✖ ${scriptName}:${workspace} ${YELLOW}$${RESET} npm run -w ${workspace} --if-present ${script}`,
           );
           if (output.length > 0) {
             console.log(
               `${output
                 .split('\n')
-                .map((line) => `\x1b[31m│\x1b[0m ${line}`)
+                .map((line) => `${RED}│${RESET} ${line}`)
                 .join('\n')}`,
             );
           }
           console.log(
-            `\x1b[31m└─ \x1b[1m\x1b[31mFailed\x1b[0m \x1B[2m(${elapsedTime}ms)\x1b[0m${values['print-success'] ? '\n' : ''}`,
+            `${RED}└─ ${BOLD}${RED}Failed${RESET} ${DIM}(${elapsedTime}ms)${RESET}${values['print-success'] ? '\n' : ''}`,
           );
-          failedScripts.push(`\x1b[1m\x1b[31m✖ ${scriptName}:${workspace} failed\x1b[0m`);
+          failedScripts.push(`${BOLD}${RED}✖ ${scriptName}:${workspace} failed${RESET}`);
         } else if (values['print-success']) {
           console.log(
-            `\x1b[1m\x1b[32m✓\x1b[0m ${scriptName}:${workspace} \x1b[33m$\x1b[0m npm run -w ${workspace} --if-present ${script}`,
+            `${BOLD}${GREEN}✓${RESET} ${scriptName}:${workspace} ${YELLOW}$${RESET} npm run -w ${workspace} --if-present ${script}`,
           );
           if (output.length > 0) {
             console.log(
               `${output
                 .split('\n')
-                .map((line) => `\x1b[32m│\x1b[0m ${line}`)
+                .map((line) => `${GREEN}│${RESET} ${line}`)
                 .join('\n')}`,
             );
           }
           console.log(
-            `\x1b[32m└─ \x1b[1m\x1b[32mSuccess\x1b[0m \x1B[2m(${elapsedTime}ms)\x1b[0m\n`,
+            `${GREEN}└─ ${BOLD}${GREEN}Success${RESET} ${DIM}(${elapsedTime}ms)${RESET}\n`,
           );
         } else {
           console.log(
-            `\x1b[1m\x1b[32m✔\x1b[0m ${scriptName}:${workspace} \x1B[2m(${elapsedTime}ms)\x1b[0m`,
+            `${BOLD}${GREEN}✔${RESET} ${scriptName}:${workspace} ${DIM}(${elapsedTime}ms)${RESET}`,
           );
         }
         return id;
@@ -508,10 +515,10 @@ if (values.list || values['list-dependencies']) {
     message += `${elapsedHours}h ${remainingMinutes}m`;
   }
 
-  message += ` (${commandCount} tasks)`;
-  console.log(message, '\x1b[32m');
+  message += ` (${commandCount} tasks)${RESET}`;
+  console.log(message);
 
   if (failedScripts.length > 0) {
-    console.log(`\n${failedScripts.join('\n')}`);
+    console.log(`\n${RED}${failedScripts.join('\n')}${RESET}`);
   }
 }
