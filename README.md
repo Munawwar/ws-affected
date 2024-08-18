@@ -2,19 +2,61 @@
 
 `ws-affected` is a command-line tool that helps you identify and/or run scripts only on npm workspaces affected by the changes on a git branch (default: current branch/commit). This script does not have any dependencies but node.js and git.
 
-## Features
+## Use Cases
 
 - Run scripts on workspaces and their dependents affected by changes on a branch
   
     This is useful on local development to run tests and lint only on workspaces that have changed
+  
+  ```sh
+  npx ws-affected --run lint --run test
+  ```
+  ```
+  ✓ lint:service1 (748ms)
+  ✓ lint:service3 (1289ms)
+  ✓ test:shared-lib (2816ms)
+
+  ⏱️  Took 2.89s (3 tasks)
+  ```
 
 - List workspaces affected by changes on a branch
 
     This is useful for CI/CD scripts to determine affected workspaces to deploy
 
+    ```sh
+    npx ws-affected --list
+    # or npx ws-affected --list --base master --head HEAD
+    # or npx ws-affected --list --base origin/master --head origin/HEAD
+    ```
+    ```
+    service1
+    service3
+    shared-lib
+    ```
+
+    You can exclude a workspace (like shared-*) with pattern matching and then e.g. you can then start deployment of the affected services:
+    ```sh
+    AFFECTED_SERVICES=$(npx ws-affected --list --base=origin/master | awk -F', ' '{ for( i=1; i<=NF; i++ ) print $i }' | grep -vE '^shared-' | sort)
+    ```
+    ```
+    service1
+    service3
+    ```
+
 - List a single workspace's prod dependencies
   
-    This is useful for CI/CD scripts for packaging only the prod dependencies of a single workspace / service
+    This is useful for CI/CD scripts for packaging only the prod dependencies of a single workspace / service.
+
+    ```sh
+    npx ws-affected --workspace service1 --list-dependencies --dep-types prod
+    ```
+    ```
+    service1
+    shared-lib
+    ```
+
+    You can use it to delete the rest of the workspaces temporarily to not just speed up the build process but in serverless
+    environments like AWS Lambda this will reduce the size of the deployment package.
 
 
 ## Installation
@@ -90,8 +132,9 @@ npx ws-affected --list
 # or npx ws-affected --list --base origin/master --head origin/HEAD
 ```
 ```
-workspace1
-workspace3
+service1
+service3
+shared-lib
 ```
 
 ### Run scripts on affected workspaces
