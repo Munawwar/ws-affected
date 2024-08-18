@@ -4,7 +4,7 @@
 
 ## Use Cases
 
-- Run scripts on workspaces and their dependents affected by changes on a branch
+- **Run scripts on workspaces and their dependents affected by changes on a branch**
   
     This is useful on local development to run tests and lint only on workspaces that have changed
   
@@ -19,7 +19,7 @@
   ⏱️  Took 2.89s (3 tasks)
   ```
 
-- List workspaces affected by changes on a branch
+- **List workspaces affected by changes on a branch**
 
     This is useful for CI/CD scripts to determine affected workspaces to deploy
 
@@ -43,7 +43,7 @@
     service3
     ```
 
-- List a single workspace's prod dependencies
+- **List a single workspace's prod dependencies**
   
     This is useful for CI/CD scripts for packaging only the prod dependencies of a single workspace / service.
 
