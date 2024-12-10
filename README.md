@@ -4,9 +4,9 @@
 
 ## Use Cases
 
-- **Run scripts on workspaces and their dependents affected by changes on a branch**
-  
-    This is useful on local development to run tests and lint only on workspaces that have changed
+- **Local development: Run linting, type checks, tests etc only on *changed* workspaces**
+
+  Run scripts on workspaces and their dependents affected by changes on a branch. This is useful on local development to run tests and lint only on workspaces that have changed.
   
   ```sh
   npx ws-affected --run lint --run test
@@ -19,9 +19,9 @@
   ⏱️  Took 2.89s (3 tasks)
   ```
 
-- **List workspaces affected by changes on a branch**
+- **CI/CD change detection: "Tell me what workspaces needs to be deployed"**
 
-    This is useful for CI/CD scripts to determine affected workspaces to deploy
+    List workspaces affected by changes on a branch. This is useful for CI/CD scripts to determine affected workspaces to deploy.
 
     ```sh
     npx ws-affected --list
@@ -43,9 +43,9 @@
     service3
     ```
 
-- **List a single workspace's prod dependencies**
-  
-    This is useful for CI/CD scripts for packaging only the prod dependencies of a single workspace / service.
+- **CI/CD packaging: "Tell me how to deploy a single workspace"**
+
+    List a single workspace's prod dependencies. This is useful for CI/CD scripts for packaging only the prod dependencies of a single workspace / service.
 
     ```sh
     npx ws-affected --workspace service1 --list-dependencies --dep-types prod
