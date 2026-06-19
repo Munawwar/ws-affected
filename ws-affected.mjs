@@ -19,6 +19,10 @@ const options = {
     short: 'r',
     multiple: true,
   },
+  'run-root': {
+    type: 'string',
+    multiple: true,
+  },
   list: {
     type: 'boolean',
     short: 'l',
@@ -79,6 +83,7 @@ Usage: npx ws-affected [options]
 
 Options:
   -r, --run <script>      Run the specified commands on affected workspaces (repeatable flag)
+  --run-root <script>     Run the specified root package.json scripts once using the same scheduler (repeatable flag)
   -l, --list              List recursively the dependents (inclusive) of affected workspaces or workspaces selected by --workspace flag
   -b, --base <branch>     The base branch to compare against (default: master)
   -h, --head <branch>     The head branch to compare for (default: HEAD)
@@ -93,6 +98,7 @@ Options:
 Examples:
   ws-affected --list
   ws-affected --run lint --run test --concurrency 4
+  ws-affected --run lint --run-root biome-only --concurrency 4
   ws-affected --base main --run build
   ws-affected --run lint --run test --print-success
 
@@ -159,8 +165,15 @@ if (!rootPackageJson.workspaces) {
   process.exit(1);
 }
 
-if (values.list === undefined && values['list-dependencies'] === undefined && !values.run?.length) {
-  console.error(`${RED}Please specify --run or --list or --list-dependencies flag.${RESET}`);
+if (
+  values.list === undefined &&
+  values['list-dependencies'] === undefined &&
+  !values.run?.length &&
+  !values['run-root']?.length
+) {
+  console.error(
+    `${RED}Please specify --run or --run-root or --list or --list-dependencies flag.${RESET}`,
+  );
   console.log(helpText);
   process.exit(1);
 }
@@ -383,7 +396,7 @@ if (values.list || values['list-dependencies']) {
   if (filteredWorkspaces.length) {
     console.log(filteredWorkspaces.join('\n'));
   }
-} else if (values.run) {
+} else if (values.run || values['run-root']) {
   const spawnAsync = (command, options) =>
     new Promise((resolve) => {
       const child = spawn(command, {
@@ -409,7 +422,9 @@ if (values.list || values['list-dependencies']) {
       });
     });
 
-  const scriptsToRun = values.run;
+  const tasksToRun = [];
+  const rootScriptsToRun = values['run-root'] || [];
+  const workspaceScriptsToRun = values.run || [];
   let concurrency = Number.parseInt(values.concurrency, 10) || 0;
   if (concurrency === 0) {
     concurrency = os.cpus().length;
@@ -424,76 +439,87 @@ if (values.list || values['list-dependencies']) {
   const initialStartTime = Date.now();
   let commandCount = 0;
   const failedScripts = [];
+  for (const script of rootScriptsToRun) {
+    const scriptName = script.split(' ')[0];
+    const command = rootPackageJson.scripts?.[scriptName] || '';
+
+    if (!command) continue;
+    tasksToRun.push({
+      script,
+      scriptName,
+      target: 'root',
+      label: `${scriptName}:root`,
+      shellCommand: `npm run --if-present ${script}`,
+      cwd: process.cwd(),
+    });
+  }
   for (const workspace of filteredWorkspaces) {
-    for (const script of scriptsToRun) {
-      const id = idGen++;
-      const promise = (async () => {
-        const scriptName = script.split(' ')[0];
-        const command = workspaceInfoByName[workspace].scripts[scriptName] || '';
-        const startTime = Date.now();
-        let elapsedTime;
-        let error;
+    for (const script of workspaceScriptsToRun) {
+      const scriptName = script.split(' ')[0];
+      const command = workspaceInfoByName[workspace].scripts[scriptName] || '';
 
-        if (!command) return id;
-        commandCount++;
+      if (!command) continue;
+      tasksToRun.push({
+        script,
+        scriptName,
+        target: workspace,
+        label: `${scriptName}:${workspace}`,
+        shellCommand: `npm run -w ${workspace} --if-present ${script}`,
+        cwd: workspaceInfoByName[workspace].dir,
+      });
+    }
+  }
+  for (const { label, shellCommand, cwd } of tasksToRun) {
+    const id = idGen++;
+    const promise = (async () => {
+      const startTime = Date.now();
+      commandCount++;
 
-        const { code, output } = await spawnAsync(
-          `npm run -w ${workspace} --if-present ${script}`,
-          {
-            encoding: 'utf8',
-            cwd: workspaceInfoByName[workspace].dir,
-          },
-        );
-        elapsedTime = Date.now() - startTime;
+      const { code, output } = await spawnAsync(shellCommand, {
+        encoding: 'utf8',
+        cwd,
+      });
+      const elapsedTime = Date.now() - startTime;
 
-        if (code !== 0) {
-          process.exitCode = 1;
+      if (code !== 0) {
+        process.exitCode = 1;
+        console.log(`${BOLD}${RED}✖ ${label} ${YELLOW}$${RESET} ${shellCommand}`);
+        if (output.length > 0) {
           console.log(
-            `${BOLD}${RED}✖ ${scriptName}:${workspace} ${YELLOW}$${RESET} npm run -w ${workspace} --if-present ${script}`,
-          );
-          if (output.length > 0) {
-            console.log(
-              `${output
-                .split('\n')
-                .map((line) => `${RED}│${RESET} ${line}`)
-                .join('\n')}`,
-            );
-          }
-          console.log(
-            `${RED}└─ ${BOLD}${RED}Failed${RESET} ${DIM}(${elapsedTime}ms)${RESET}${values['print-success'] ? '\n' : ''}`,
-          );
-          failedScripts.push(`${BOLD}${RED}✖ ${scriptName}:${workspace} failed${RESET}`);
-        } else if (values['print-success']) {
-          console.log(
-            `${BOLD}${GREEN}✓${RESET} ${scriptName}:${workspace} ${YELLOW}$${RESET} npm run -w ${workspace} --if-present ${script}`,
-          );
-          if (output.length > 0) {
-            console.log(
-              `${output
-                .split('\n')
-                .map((line) => `${GREEN}│${RESET} ${line}`)
-                .join('\n')}`,
-            );
-          }
-          console.log(
-            `${GREEN}└─ ${BOLD}${GREEN}Success${RESET} ${DIM}(${elapsedTime}ms)${RESET}\n`,
-          );
-        } else {
-          console.log(
-            `${BOLD}${GREEN}✔${RESET} ${scriptName}:${workspace} ${DIM}(${elapsedTime}ms)${RESET}`,
+            `${output
+              .split('\n')
+              .map((line) => `${RED}│${RESET} ${line}`)
+              .join('\n')}`,
           );
         }
-        return id;
-      })();
-      promises.push(promise);
-      promiseIdPosition.push(id);
-
-      if (promises.length >= concurrency) {
-        const id = await Promise.race(promises);
-        const index = promiseIdPosition.indexOf(id);
-        promises.splice(index, 1);
-        promiseIdPosition.splice(index, 1);
+        console.log(
+          `${RED}└─ ${BOLD}${RED}Failed${RESET} ${DIM}(${elapsedTime}ms)${RESET}${values['print-success'] ? '\n' : ''}`,
+        );
+        failedScripts.push(`${BOLD}${RED}✖ ${label} failed${RESET}`);
+      } else if (values['print-success']) {
+        console.log(`${BOLD}${GREEN}✓${RESET} ${label} ${YELLOW}$${RESET} ${shellCommand}`);
+        if (output.length > 0) {
+          console.log(
+            `${output
+              .split('\n')
+              .map((line) => `${GREEN}│${RESET} ${line}`)
+              .join('\n')}`,
+          );
+        }
+        console.log(`${GREEN}└─ ${BOLD}${GREEN}Success${RESET} ${DIM}(${elapsedTime}ms)${RESET}\n`);
+      } else {
+        console.log(`${BOLD}${GREEN}✔${RESET} ${label} ${DIM}(${elapsedTime}ms)${RESET}`);
       }
+      return id;
+    })();
+    promises.push(promise);
+    promiseIdPosition.push(id);
+
+    if (promises.length >= concurrency) {
+      const id = await Promise.race(promises);
+      const index = promiseIdPosition.indexOf(id);
+      promises.splice(index, 1);
+      promiseIdPosition.splice(index, 1);
     }
   }
   await Promise.all(promises);

@@ -74,6 +74,7 @@ Usage: npx ws-affected [options]
 
 Options:
   -r, --run <script>      Run the specified commands on affected workspaces (repeatable flag)
+  --run-root <script>     Run the specified root package.json scripts once using the same scheduler (repeatable flag)
   -l, --list              List recursively the dependents (inclusive) of affected workspaces or workspaces selected by --workspace flag
   -b, --base <branch>     The base branch to compare against (default: master)
   -h, --head <branch>     The head branch to compare for (default: HEAD)
@@ -88,6 +89,7 @@ Options:
 Examples:
   ws-affected --list
   ws-affected --run lint --run test --concurrency 4
+  ws-affected --run lint --run-root biome-only --concurrency 4
   ws-affected --base main --run build
   ws-affected --run lint --run test --print-success
 
@@ -147,6 +149,11 @@ npx ws-affected --run lint --run test
 ✓ test:shared-lib (2816ms)
 
 ⏱️  Took 2.89s (3 tasks)
+```
+
+### Run root and workspace scripts in the same scheduler
+```sh
+npx ws-affected --run lint --run-root biome-only --concurrency 4
 ```
 
 ### Same command but show output for all scripts including successful ones
