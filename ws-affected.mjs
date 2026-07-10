@@ -264,54 +264,40 @@ workspaceInfoByName = Object.entries(workspaceInfoByName).reduce(
 );
 
 /**
- * Function to get all workspaces dependent on a workspace
- * @param {string} workspaceName - The name of the workspace
- * @param {object} [options]
- * @param {'all' | 'prod'} [options.depTypes='all'] 'prod' dependencies is "dependencies" and "peerDependencies" in package.json
- * @param {boolean} [options.inclusive=false] If true, includes `workspaceName` in the list of dependents
- * @returns {Set<string>} - The set of dependent workspaces
+ * Find all workspaces reachable in one direction of the dependency graph.
+ * @param {string} workspaceName - The workspace where traversal starts
+ * @param {object} options
+ * @param {'dependencies' | 'dependents'} options.direction - Graph traversal direction
+ * @param {'all' | 'prod'} [options.depTypes='all'] - Dependency types to follow
+ * @param {boolean} [options.inclusive=false] - Include the starting workspace
+ * @returns {Set<string>}
  */
-function findDependents(workspaceName, { depTypes = 'all', inclusive = false } = {}) {
-  const deps = new Set([]);
-  if (workspaceInfoByName[workspaceName] && inclusive) {
-    deps.add(workspaceName);
-  }
-  Object.entries(workspaceInfoByName).forEach(([name, { dependencies }]) => {
-    let selectedDependencies;
-    if (depTypes === 'all') {
-      selectedDependencies = Object.values(dependencies).flat();
-    } else if (depTypes === 'prod') {
-      selectedDependencies = dependencies.dependencies.concat(dependencies.peerDependencies);
-    }
-    if (selectedDependencies.includes(workspaceName)) {
-      deps.add(name);
-    }
-  });
-  return deps;
-}
+function findRelatedWorkspaces(workspaceName, { direction, depTypes = 'all', inclusive = false }) {
+  const selectedDependencies = (name) => {
+    const { dependencies } = workspaceInfoByName[name];
+    return depTypes === 'prod'
+      ? dependencies.dependencies.concat(dependencies.peerDependencies)
+      : Object.values(dependencies).flat();
+  };
+  const found = new Set([workspaceName]);
+  const pending = [workspaceName];
 
-/**
- * Function to get recursive dependencies of a workspace
- * @param {string} workspaceName - The name of the workspace
- * @param {object} [options]
- * @param {'all' | 'prod'} [options.depTypes='all'] 'prod' dependencies is "dependencies" and "peerDependencies" in package.json
- * @param {boolean} [options.inclusive=false] If true, includes `workspaceName` in the list of dependencies
- * @returns {Set<string>} - The set of dependent workspaces
- */
-function findDependencies(workspaceName, { depTypes = 'all', inclusive = false } = {}) {
-  const deps = new Set([]);
-  if (workspaceInfoByName[workspaceName] && inclusive) {
-    deps.add(workspaceName);
+  while (pending.length) {
+    const current = pending.shift();
+    const related =
+      direction === 'dependencies'
+        ? selectedDependencies(current)
+        : Object.keys(workspaceInfoByName).filter((name) =>
+            selectedDependencies(name).includes(current),
+          );
+    related.forEach((name) => {
+      if (found.has(name)) return;
+      found.add(name);
+      pending.push(name);
+    });
   }
-  const { dependencies } = workspaceInfoByName[workspaceName];
-  let selectedDependencies;
-  if (depTypes === 'all') {
-    selectedDependencies = Object.values(dependencies).flat();
-  } else if (depTypes === 'prod') {
-    selectedDependencies = dependencies.dependencies.concat(dependencies.peerDependencies);
-  }
-  selectedDependencies.forEach((name) => deps.add(name));
-  return deps;
+  if (!inclusive) found.delete(workspaceName);
+  return found;
 }
 
 // --- Filtering workspaces ---
@@ -363,9 +349,11 @@ if (values['all-workspaces']) {
   // Find affected workspaces and their dependent workspaces
   const affectedSet = new Set();
   affectedWorkspaces.forEach((workspaceName) => {
-    findDependents(workspaceName, { depTypes: 'all', inclusive: true }).forEach((value) =>
-      affectedSet.add(value),
-    );
+    findRelatedWorkspaces(workspaceName, {
+      direction: 'dependents',
+      depTypes: 'all',
+      inclusive: true,
+    }).forEach((value) => affectedSet.add(value));
   });
   filteredWorkspaces = [...affectedSet];
 }
@@ -380,12 +368,14 @@ if (values.list || values['list-dependencies']) {
     const deps = new Set([]);
     values.workspace.forEach((workspaceName) => {
       if (values.list) {
-        findDependents(workspaceName, {
+        findRelatedWorkspaces(workspaceName, {
+          direction: 'dependents',
           depTypes: values['dep-types'],
           inclusive: true,
         }).forEach((name) => deps.add(name));
       } else if (values['list-dependencies']) {
-        findDependencies(workspaceName, {
+        findRelatedWorkspaces(workspaceName, {
+          direction: 'dependencies',
           depTypes: values['dep-types'],
           inclusive: true,
         }).forEach((name) => deps.add(name));
